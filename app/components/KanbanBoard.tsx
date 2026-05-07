@@ -23,6 +23,7 @@ import { ColumnModal } from './ColumnModal';
 import { FilterBar } from './FilterBar';
 import { TaskCard } from './TaskCard';
 import { useTaskFilter } from '../hooks/useTaskFilter';
+import { ConfirmModal } from './ConfirmModal';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -55,6 +56,8 @@ export function KanbanBoard({
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingColumn, setEditingColumn] = useState<Column | null>(null);
   const [defaultColumnId, setDefaultColumnId] = useState<string>('');
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   const {
     filters,
@@ -203,6 +206,28 @@ export function KanbanBoard({
     }
   };
 
+  // Task delete confirmation
+  const handleDeleteTaskRequest = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (task) {
+      setDeletingTask(task);
+      setIsConfirmModalOpen(true);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (deletingTask) {
+      onDeleteTask(deletingTask.id);
+      setDeletingTask(null);
+      setIsConfirmModalOpen(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeletingTask(null);
+    setIsConfirmModalOpen(false);
+  };
+
   return (
     <div className="kanban-board">
       {/* Filters */}
@@ -234,7 +259,7 @@ export function KanbanBoard({
                 column={column}
                 tasks={tasksByColumn[column.id] || []}
                 onEditTask={handleEditTask}
-                onDeleteTask={onDeleteTask}
+                onDeleteTask={handleDeleteTaskRequest}
                 onAddTask={handleAddTask}
                 onEditColumn={handleEditColumn}
                 onDeleteColumn={onDeleteColumn}
@@ -278,6 +303,18 @@ export function KanbanBoard({
         onClose={handleColumnModalClose}
         onSave={handleSaveColumn}
         column={editingColumn}
+      />
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        title="Delete Task"
+        message={deletingTask ? `Are you sure you want to delete "${deletingTask.title}"? This action cannot be undone.` : ''}
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
       />
     </div>
   );
