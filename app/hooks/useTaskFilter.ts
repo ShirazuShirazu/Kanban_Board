@@ -6,9 +6,17 @@ export function useTaskFilter(tasks: Task[]) {
     searchQuery: '',
     priorityFilter: 'All',
   });
+  const [isSearching, setIsSearching] = useState(false);
 
-  const setSearchQuery = useCallback((query: string) => {
+  // Submit search with simulated delay for spinner
+  const submitSearch = useCallback(async (query: string) => {
+    setIsSearching(true);
+    
+    // Simulate a small delay to show the spinner (300ms)
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
     setFilters((prev) => ({ ...prev, searchQuery: query }));
+    setIsSearching(false);
   }, []);
 
   const setPriorityFilter = useCallback((priority: Priority | 'All') => {
@@ -51,7 +59,8 @@ export function useTaskFilter(tasks: Task[]) {
   return {
     filters,
     filteredTasks,
-    setSearchQuery,
+    isSearching,
+    submitSearch,
     setPriorityFilter,
     clearFilters,
     hasActiveFilters,

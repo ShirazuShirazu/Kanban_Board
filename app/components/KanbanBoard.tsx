@@ -15,10 +15,11 @@ import {
   defaultDropAnimationSideEffects,
   DropAnimation,
 } from '@dnd-kit/core';
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Task, Column } from '../types';
 import { KanbanColumn } from './KanbanColumn';
 import { TaskModal } from './TaskModal';
+import { ColumnModal } from './ColumnModal';
 import { FilterBar } from './FilterBar';
 import { TaskCard } from './TaskCard';
 import { useTaskFilter } from '../hooks/useTaskFilter';
@@ -31,6 +32,9 @@ interface KanbanBoardProps {
   onDeleteTask: (taskId: string) => void;
   onMoveTask: (taskId: string, newColumnId: string, newIndex?: number) => void;
   onReorderTask: (columnId: string, oldIndex: number, newIndex: number) => void;
+  onAddColumn: (title: string) => void;
+  onUpdateColumn: (columnId: string, title: string) => void;
+  onDeleteColumn: (columnId: string) => void;
 }
 
 export function KanbanBoard({
@@ -41,16 +45,22 @@ export function KanbanBoard({
   onDeleteTask,
   onMoveTask,
   onReorderTask,
+  onAddColumn,
+  onUpdateColumn,
+  onDeleteColumn,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingColumn, setEditingColumn] = useState<Column | null>(null);
   const [defaultColumnId, setDefaultColumnId] = useState<string>('');
 
   const {
     filters,
     filteredTasks,
-    setSearchQuery,
+    isSearching,
+    submitSearch,
     setPriorityFilter,
     clearFilters,
     hasActiveFilters,
@@ -76,19 +86,14 @@ export function KanbanBoard({
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // Minimum drag distance before drag starts
-      },
+      activationConstraint: { distance: 5 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
-  const activeTask = useMemo(
-    () => tasks.find((t) => t.id === activeId) || null,
-    [activeId, tasks]
-  );
+  const activeTask = useMemo(() => tasks.find((t) => t.id === activeId) || null, [activeId, tasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -96,39 +101,25 @@ export function KanbanBoard({
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-
     if (!over) return;
 
     const activeTaskId = active.id as string;
     const overId = over.id as string;
-
-    // Find the active task
     const activeTaskItem = tasks.find((t) => t.id === activeTaskId);
     if (!activeTaskItem) return;
 
-    // Check if we're over a column
     const overColumn = columns.find((c) => c.id === overId);
-    
-    // Check if we're over another task
     const overTask = tasks.find((t) => t.id === overId);
 
-    if (overColumn) {
-      // Dragging over a different column
-      if (activeTaskItem.columnId !== overColumn.id) {
-        onMoveTask(activeTaskId, overColumn.id);
-      }
-    } else if (overTask && overTask.id !== activeTaskId) {
-      // Dragging over another task
-      if (activeTaskItem.columnId !== overTask.columnId) {
-        // Moving to a different column
-        onMoveTask(activeTaskId, overTask.columnId);
-      }
+    if (overColumn && activeTaskItem.columnId !== overColumn.id) {
+      onMoveTask(activeTaskId, overColumn.id);
+    } else if (overTask && overTask.id !== activeTaskId && activeTaskItem.columnId !== overTask.columnId) {
+      onMoveTask(activeTaskId, overTask.columnId);
     }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (!over) {
       setActiveId(null);
       return;
@@ -136,14 +127,13 @@ export function KanbanBoard({
 
     const activeTaskId = active.id as string;
     const overId = over.id as string;
-
     const activeTaskItem = tasks.find((t) => t.id === activeTaskId);
+    
     if (!activeTaskItem) {
       setActiveId(null);
       return;
     }
 
-    // If over a task, reorder within the column
     const overTask = tasks.find((t) => t.id === overId);
     if (overTask && overTask.id !== activeTaskId) {
       const columnTasks = allTasksByColumn[activeTaskItem.columnId];
@@ -160,27 +150,23 @@ export function KanbanBoard({
 
   const dropAnimation: DropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
-      styles: {
-        active: {
-          opacity: '0.5',
-        },
-      },
+      styles: { active: { opacity: '0.5' } },
     }),
   };
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
-    setIsModalOpen(true);
+    setIsTaskModalOpen(true);
   };
 
   const handleAddTask = (columnId: string) => {
     setEditingTask(null);
     setDefaultColumnId(columnId);
-    setIsModalOpen(true);
+    setIsTaskModalOpen(true);
   };
 
-  const handleModalClose = () => {
-    setIsModalOpen(false);
+  const handleTaskModalClose = () => {
+    setIsTaskModalOpen(false);
     setEditingTask(null);
     setDefaultColumnId('');
   };
@@ -193,18 +179,43 @@ export function KanbanBoard({
     }
   };
 
+  // Column management
+  const handleAddColumn = () => {
+    setEditingColumn(null);
+    setIsColumnModalOpen(true);
+  };
+
+  const handleEditColumn = (column: Column) => {
+    setEditingColumn(column);
+    setIsColumnModalOpen(true);
+  };
+
+  const handleColumnModalClose = () => {
+    setIsColumnModalOpen(false);
+    setEditingColumn(null);
+  };
+
+  const handleSaveColumn = (title: string) => {
+    if (editingColumn) {
+      onUpdateColumn(editingColumn.id, title);
+    } else {
+      onAddColumn(title);
+    }
+  };
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="kanban-board">
       {/* Filters */}
       <FilterBar
         searchQuery={filters.searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchSubmit={submitSearch}
         priorityFilter={filters.priorityFilter}
         onPriorityChange={setPriorityFilter}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
         taskCount={tasks.length}
         filteredCount={filteredTasks.length}
+        isSearching={isSearching}
       />
 
       {/* Kanban Board */}
@@ -215,8 +226,8 @@ export function KanbanBoard({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 overflow-x-auto overflow-y-hidden">
-          <div className="flex gap-6 h-full min-w-max p-1">
+        <div className="board-container">
+          <div className="board-columns">
             {columns.map((column) => (
               <KanbanColumn
                 key={column.id}
@@ -225,20 +236,27 @@ export function KanbanBoard({
                 onEditTask={handleEditTask}
                 onDeleteTask={onDeleteTask}
                 onAddTask={handleAddTask}
+                onEditColumn={handleEditColumn}
+                onDeleteColumn={onDeleteColumn}
+                canDelete={columns.length > 1}
               />
             ))}
+            
+            {/* Add Column Button */}
+            <button onClick={handleAddColumn} className="add-column-btn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>Add Column</span>
+            </button>
           </div>
         </div>
 
         {/* Drag Overlay */}
         <DragOverlay dropAnimation={dropAnimation}>
           {activeTask ? (
-            <div className="opacity-90 rotate-2 scale-105">
-              <TaskCard
-                task={activeTask}
-                onEdit={() => {}}
-                onDelete={() => {}}
-              />
+            <div className="drag-overlay-card">
+              <TaskCard task={activeTask} onEdit={() => {}} onDelete={() => {}} />
             </div>
           ) : null}
         </DragOverlay>
@@ -246,12 +264,20 @@ export function KanbanBoard({
 
       {/* Task Modal */}
       <TaskModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
+        isOpen={isTaskModalOpen}
+        onClose={handleTaskModalClose}
         onSave={handleSaveTask}
         task={editingTask}
         columns={columns}
         defaultColumnId={defaultColumnId}
+      />
+
+      {/* Column Modal */}
+      <ColumnModal
+        isOpen={isColumnModalOpen}
+        onClose={handleColumnModalClose}
+        onSave={handleSaveColumn}
+        column={editingColumn}
       />
     </div>
   );

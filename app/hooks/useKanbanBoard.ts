@@ -94,7 +94,57 @@ export function useKanbanBoard() {
 
   const clearBoard = useCallback(() => {
     setTasks([]);
+    setColumns(DEFAULT_COLUMNS);
     persistence.clear();
+  }, []);
+
+  // Column management
+  const addColumn = useCallback((title: string) => {
+    const newColumn: Column = {
+      id: `column-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      title: title.trim(),
+    };
+    setColumns((prev) => [...prev, newColumn]);
+    return newColumn;
+  }, []);
+
+  const updateColumn = useCallback((columnId: string, title: string) => {
+    setColumns((prev) =>
+      prev.map((col) =>
+        col.id === columnId ? { ...col, title: title.trim() } : col
+      )
+    );
+  }, []);
+
+  const deleteColumn = useCallback((columnId: string) => {
+    // Move all tasks from this column to the first remaining column
+    setTasks((prev) => {
+      const remainingColumns = columns.filter((c) => c.id !== columnId);
+      const fallbackColumnId = remainingColumns[0]?.id;
+      
+      if (!fallbackColumnId) return prev;
+      
+      return prev.map((task) =>
+        task.columnId === columnId
+          ? { ...task, columnId: fallbackColumnId }
+          : task
+      );
+    });
+    
+    setColumns((prev) => prev.filter((col) => col.id !== columnId));
+  }, [columns]);
+
+  const reorderColumns = useCallback((oldIndex: number, newIndex: number) => {
+    setColumns((prev) => {
+      if (oldIndex < 0 || oldIndex >= prev.length) return prev;
+      if (newIndex < 0 || newIndex >= prev.length) return prev;
+      
+      const newColumns = [...prev];
+      const [movedColumn] = newColumns.splice(oldIndex, 1);
+      newColumns.splice(newIndex, 0, movedColumn);
+      
+      return newColumns;
+    });
   }, []);
 
   return {
@@ -107,5 +157,9 @@ export function useKanbanBoard() {
     moveTask,
     reorderTask,
     clearBoard,
+    addColumn,
+    updateColumn,
+    deleteColumn,
+    reorderColumns,
   };
 }
